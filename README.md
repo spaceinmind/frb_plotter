@@ -1,4 +1,4 @@
-# FRB plotter
+# FRB plotter 💥📡📉
 ---
 ## Overview
 
