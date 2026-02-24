@@ -1,4 +1,4 @@
-# frb-plotting-tools
+# FRB plotter
 
 Three standalone Python scripts for making publication-style plots of FRB dynamic spectra from common data formats:
 
