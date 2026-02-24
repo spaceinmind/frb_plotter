@@ -154,12 +154,8 @@ python plot_frb_npy.py dynspec.npy --no-dedisperse
 | `--save-png`                | Save figure to disk                       |
 
 ---
+## Example plot
 
-### Headless Systems (HPC / Remote)
-
-The scripts use `matplotlib` with `TkAgg`.
-If running on a headless cluster, you may need:
-
-```python
-matplotlib.use("Agg")
+```bash
+python plot_frb_fil.py 20220114_B2_EDD_pulsar.fil --dm 87.75 --sym --flag-freq 1552-1559
 ```
