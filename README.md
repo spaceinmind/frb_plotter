@@ -30,9 +30,9 @@ All scripts support:
 ## Installation
 pip install -r requirements.txt
 
-# Usage
+## Usage
 
-## (1) Plotting `.h5` Files
+### (1) Plotting `.h5` Files
 
 Expected datasets:
 
@@ -46,13 +46,13 @@ Optional:
 * `/good_freq`
 * metadata stored in attributes
 
-### Basic usage
+#### Basic usage
 
 ```bash
 python plot_frb_h5.py burst.h5
 ```
 
-### Example with options
+#### Example with options
 
 ```bash
 python plot_frb_h5.py burst.h5 \
@@ -66,20 +66,20 @@ python plot_frb_h5.py burst.h5 \
 
 ---
 
-## (2) Plotting `.fil` Files (SIGPROC Filterbank)
+### (2) Plotting `.fil` Files (SIGPROC Filterbank)
 
 Reads filterbank files using `sigpyproc`.
 
 If a DM is present in the header, it will be used automatically.
 You can override with `--dm`, or disable dedispersion using `--no-dedisperse`.
 
-### Basic usage
+#### Basic usage
 
 ```bash
 python plot_frb_fil.py observation.fil
 ```
 
-### Example with explicit DM
+#### Example with explicit DM
 
 ```bash
 python plot_frb_fil.py observation.fil \
@@ -90,7 +90,7 @@ python plot_frb_fil.py observation.fil \
   --save-png
 ```
 
-### Disable dedispersion
+#### Disable dedispersion
 
 ```bash
 python plot_frb_fil.py observation.fil --no-dedisperse
@@ -98,7 +98,7 @@ python plot_frb_fil.py observation.fil --no-dedisperse
 
 ---
 
-## (3) Plotting `.npy` Files
+### (3) Plotting `.npy` Files
 
 Assumes array shape:
 
@@ -111,13 +111,13 @@ Time axis is computed from `--tsamp`.
 
 `--dm` is required unless `--no-dedisperse` is used.
 
-### Basic usage
+#### Basic usage
 
 ```bash
 python plot_frb_npy.py dynspec.npy --dm 412.4
 ```
 
-### Full example
+#### Full example
 
 ```bash
 python plot_frb_npy.py dynspec.npy \
@@ -132,7 +132,7 @@ python plot_frb_npy.py dynspec.npy \
   -o dynspec.png
 ```
 
-### Disable dedispersion
+#### Disable dedispersion
 
 ```bash
 python plot_frb_npy.py dynspec.npy --no-dedisperse
@@ -140,7 +140,7 @@ python plot_frb_npy.py dynspec.npy --no-dedisperse
 
 ---
 
-## Common Options
+### Common Options
 
 | Option                      | Description                               |
 | --------------------------- | ----------------------------------------- |
@@ -155,7 +155,7 @@ python plot_frb_npy.py dynspec.npy --no-dedisperse
 
 ---
 
-## Headless Systems (HPC / Remote)
+### Headless Systems (HPC / Remote)
 
 The scripts use `matplotlib` with `TkAgg`.
 If running on a headless cluster, you may need:
