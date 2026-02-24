@@ -57,7 +57,7 @@ All scripts support:
 
 ---
 
-## 1️⃣ Plotting `.h5` Files
+## (1) Plotting `.h5` Files
 
 Expected datasets:
 
@@ -91,7 +91,7 @@ python plot_frb_h5.py burst.h5 \
 
 ---
 
-## 2️⃣ Plotting `.fil` Files (SIGPROC Filterbank)
+## (2) Plotting `.fil` Files (SIGPROC Filterbank)
 
 Reads filterbank files using `sigpyproc`.
 
@@ -123,7 +123,7 @@ python plot_frb_fil.py observation.fil --no-dedisperse
 
 ---
 
-## 3️⃣ Plotting `.npy` Files
+## (3) Plotting `.npy` Files
 
 Assumes array shape:
 
@@ -134,7 +134,7 @@ Assumes array shape:
 Frequency axis is constructed from `--fmin` and `--fmax`.
 Time axis is computed from `--tsamp`.
 
-⚠️ `--dm` is required unless `--no-dedisperse` is used.
+`--dm` is required unless `--no-dedisperse` is used.
 
 ### Basic usage
 
