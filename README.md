@@ -28,12 +28,6 @@ Each script can optionally:
 ## Installation
 pip install -r requirements.txt
 
-Perfect — here is a **clean, copy-paste ready Markdown “Usage” section** tailored exactly to your three scripts.
-
-You can drop this directly into your `README.md`.
-
----
-
 # Usage
 
 ## Overview
