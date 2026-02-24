@@ -159,4 +159,4 @@ python plot_frb_npy.py dynspec.npy --no-dedisperse
 ```bash
 python plot_frb_fil.py 20220114_B2_EDD_pulsar.fil --dm 87.75 --sym --flag-freq 1552-1559
 ```
-<img src="exampleplot.png" alt="Batch 1" width="800">
+<img src="exampleplot.png" alt="Batch 1" width="1000">
