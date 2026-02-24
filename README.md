@@ -18,10 +18,9 @@ Each script can optionally:
 ---
 
 ## Files
-.
-├── plot_frb_h5.py
-├── plot_frb_fil.py
-├── plot_frb_npy.py
-├── LICENSE
-├── requirements.txt
-└── README.md
+- plot_frb_h5.py
+- plot_frb_fil.py
+- plot_frb_npy.py
+- LICENSE
+- requirements.txt
+- README.md
