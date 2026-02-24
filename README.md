@@ -1,5 +1,5 @@
 # FRB plotter
-
+---
 ## Overview
 
 This repository contains three standalone plotting scripts:
@@ -18,8 +18,6 @@ All scripts support:
 * Manual frequency flagging (`--flag-freq`)
 * Symmetric time axis (`-s`)
 * Saving figures to PNG
-
----
 
 ## Files
 - plot_frb_h5.py
