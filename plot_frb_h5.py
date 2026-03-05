@@ -232,38 +232,34 @@ def downsample_1d(arr, factor):
     arr_down = arr_trim.reshape(n_trim // factor, factor).mean(axis=1)
     return arr_down, n_trim
 
-# Manual frequency-based RFI flagging BEFORE downsampling to prevent RFI bleeding
-rfi_flag_original = np.zeros(len(freqs), dtype=bool)
+# Build manual flag mask on the original fine frequency grid first,
+# then propagate to the downsampled grid so narrow bands (smaller than a
+# coarse channel) are still caught after frequency downsampling.
+manual_rfi_bands = []
 if args.flag_freq is not None:
-    print(f"\nPre-downsampling RFI flagging:")
-    manual_rfi_bands = []
     for band_str in args.flag_freq.split(','):
         parts = band_str.strip().split('-')
         if len(parts) == 2:
             try:
                 freq_low = float(parts[0])
                 freq_high = float(parts[1])
+                if freq_low > freq_high:
+                    freq_low, freq_high = freq_high, freq_low
                 manual_rfi_bands.append((freq_low, freq_high))
             except ValueError:
                 print(f"  Warning: Could not parse frequency band '{band_str}'")
-    
+
+# Apply flags on the fine grid before downsampling
+manual_flag_fine = np.zeros(len(freqs), dtype=bool)
+if manual_rfi_bands:
+    print(f"\nManual RFI flagging (on original fine grid):")
     for freq_low, freq_high in manual_rfi_bands:
-        # Ensure freq_low < freq_high
-        if freq_low > freq_high:
-            freq_low, freq_high = freq_high, freq_low
-        
         band_mask = (freqs >= freq_low) & (freqs <= freq_high)
         if np.sum(band_mask) > 0:
-            rfi_flag_original |= band_mask
-            flagged_freqs = freqs[band_mask]
-            print(f"  Manual RFI flagging: {freq_low}-{freq_high} MHz → {flagged_freqs[0]:.2f}-{flagged_freqs[-1]:.2f} MHz ({np.sum(band_mask)} channels)")
+            manual_flag_fine |= band_mask
+            print(f"  {freq_low}-{freq_high} MHz → {np.sum(band_mask)} fine channels flagged")
         else:
-            print(f"  Warning: No channels found in range {freq_low}-{freq_high} MHz")
-    
-    # Zero out flagged channels before downsampling
-    if np.sum(rfi_flag_original) > 0:
-        print(f"  Zeroing {np.sum(rfi_flag_original)} channels before downsampling")
-        data[rfi_flag_original, :] = 0
+            print(f"  Warning: No fine channels found in range {freq_low}-{freq_high} MHz")
 
 if FREQ_DOWNSAMPLE > 1 or TIME_DOWNSAMPLE > 1:
     print(f"\nDownsampling data...")
@@ -294,12 +290,27 @@ if FREQ_DOWNSAMPLE > 1 or TIME_DOWNSAMPLE > 1:
     print(f"  New frequency resolution: {np.median(np.diff(freqs_down)):.3f} MHz")
     print(f"  New time resolution: {np.median(np.diff(times_down))*1000:.6f} ms")
     
+    # Propagate fine-grid flag to coarse grid:
+    # flag any coarse channel that contains at least one flagged fine channel
+    rfi_flag_original = manual_flag_fine[:nfreq_trim].reshape(-1, FREQ_DOWNSAMPLE).any(axis=1)
+    
     # Replace original data with downsampled data
     data = data_down
     freqs = freqs_down
     times = times_down
     flag = flag_down
     good_freq = good_freq_down
+else:
+    rfi_flag_original = manual_flag_fine.copy()
+
+# Zero out the flagged channels on the (possibly downsampled) grid
+if np.sum(rfi_flag_original) > 0:
+    data[rfi_flag_original, :] = 0
+    print(f"\nManual RFI flagging (coarse grid): zeroed {np.sum(rfi_flag_original)} channels")
+    for freq_low, freq_high in manual_rfi_bands:
+        hits = rfi_flag_original & (freqs >= freq_low - 20) & (freqs <= freq_high + 20)
+        if np.sum(hits) > 0:
+            print(f"  {freq_low}-{freq_high} MHz → coarse channels at {freqs[hits]} MHz")
 
 print(f"\nData Statistics:")
 print("-" * 70)
@@ -621,11 +632,11 @@ zoom_indices = (times_rel >= zoom_start) & (times_rel <= zoom_end)
 
 # Create the dynamic spectrum plot with time series and frequency spectrum
 fig = plt.figure(figsize=(16, 9))
-gs = fig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[3, 1], 
+gs = fig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[1, 3],
                        hspace=0.05, wspace=0.05)
-ax1 = fig.add_subplot(gs[0, 0])  # Dynamic spectrum
-ax2 = fig.add_subplot(gs[1, 0], sharex=ax1)  # Time series
-ax3 = fig.add_subplot(gs[0, 1], sharey=ax1)  # Frequency spectrum
+ax2 = fig.add_subplot(gs[0, 0])  # Time series (top)
+ax1 = fig.add_subplot(gs[1, 0], sharex=ax2)  # Dynamic spectrum (bottom)
+ax3 = fig.add_subplot(gs[1, 1], sharey=ax1)  # Frequency spectrum
 
 # Extract zoomed data
 data_zoom = data_normalized[:, zoom_indices]
@@ -648,7 +659,8 @@ im = ax1.imshow(data_zoom, aspect='auto', origin='upper',
                interpolation='nearest', cmap='viridis', vmin=vmin, vmax=vmax)
 
 ax1.set_ylabel('Frequency (MHz)')
-ax1.tick_params(labelbottom=False)
+ax1.set_xlabel('Time (ms)')
+ax2.tick_params(labelbottom=False)
 
 # Mark RFI channels on the plot
 if good_freq is not None and n_rfi > 0:
@@ -797,7 +809,6 @@ print(f"  Pulse width: {width_samples} samples ({pulse_width_ms:.3f} ms)")
 print(f"  Time series S/N: {peak_snr:.2f}")
 
 ax2.plot(times_zoom, time_series_zoom, 'k-', linewidth=0.8)
-ax2.set_xlabel('Time (ms)')
 ax2.set_ylabel('Mean Intensity')
 ax2.set_xlim(times_zoom[0], times_zoom[-1])
 ax2.grid(True, alpha=0.3)
@@ -827,14 +838,17 @@ title_line2_parts.append(f"S/N~{peak_snr:.1f}")
 title_line2_parts.append(f"W95~{pulse_width_ms:.2f} ms")
 
 # Combine with newline
+freq_res_mhz = np.abs(freqs[1] - freqs[0])
+title_line2_parts.append(f"dt={tsamp_ms:.4f} ms")
+title_line2_parts.append(f"df={freq_res_mhz:.3f} MHz")
 title_str = frb_name + '\n' + ' - '.join(title_line2_parts)
-ax1.set_title(title_str)
+ax2.set_title(title_str)
 
 # Add more x-axis ticks
-ax2.xaxis.set_major_locator(MaxNLocator(nbins=10, prune=None))
-ax2.xaxis.set_minor_locator(AutoMinorLocator(5))
-ax2.tick_params(which='minor', length=3, width=0.5)
-ax2.tick_params(which='major', length=6, width=1)
+ax1.xaxis.set_major_locator(MaxNLocator(nbins=10, prune=None))
+ax1.xaxis.set_minor_locator(AutoMinorLocator(5))
+ax1.tick_params(which='minor', length=3, width=0.5)
+ax1.tick_params(which='major', length=6, width=1)
 
 # Plot frequency spectrum (averaged over pulse region)
 # Use the pulse region determined earlier
@@ -862,7 +876,7 @@ if args.flag_freq is not None:
 ax3.plot(freq_spectrum, freqs, 'k-', linewidth=0.8)
 ax3.set_xlabel('Mean Intensity')
 ax3.set_ylabel('')
-ax3.set_ylim(freqs[0], freqs[-1])
+ax3.set_ylim(freqs.min(), freqs.max())
 ax3.grid(True, alpha=0.3)
 ax3.yaxis.tick_right()
 ax3.tick_params(labelleft=False)
