@@ -662,16 +662,6 @@ ax1.set_ylabel('Frequency (MHz)')
 ax1.set_xlabel('Time (ms)')
 ax2.tick_params(labelbottom=False)
 
-# Mark RFI channels on the plot
-if good_freq is not None and n_rfi > 0:
-    rfi_indices = np.where(rfi_flag)[0]
-    # Draw a small patch on the left side to indicate RFI channels
-    patch_width = (times_zoom[-1] - times_zoom[0]) * 0.02  # 2% of time range
-    for i in range(len(rfi_indices)):
-        freq = freqs[rfi_indices[i]]
-        ax1.plot([times_zoom[0], times_zoom[0] + patch_width], [freq, freq], 
-                color='lightgray', alpha=0.7, linewidth=1.0, linestyle='-')
-
 # Plot time series (collapsed in frequency) - zoomed
 # When data is in SNR units per channel, combining N channels increases SNR by sqrt(N)
 # So we sum the normalized data and divide by sqrt(number of good channels)

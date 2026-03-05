@@ -534,14 +534,6 @@ ax1.set_ylabel('Frequency (MHz)')
 ax1.set_xlabel('Time (ms)')
 ax2.tick_params(labelbottom=False)
 
-# Mark RFI channels on the plot
-if n_rfi > 0:
-    rfi_indices = np.where(rfi_flag)[0]
-    patch_width = (times_zoom[-1] - times_zoom[0]) * 0.02
-    for i in range(len(rfi_indices)):
-        freq = freqs[rfi_indices[i]]
-        ax1.plot([times_zoom[0], times_zoom[0] + patch_width], [freq, freq],
-                color='lightgray', alpha=0.7, linewidth=1.0, linestyle='-')
 
 # Plot time series (collapsed in frequency) - zoomed
 good_mask = ~rfi_flag
