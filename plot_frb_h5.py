@@ -612,10 +612,10 @@ else:
     elif total_time_ms < 100:
         window_ms = 30  # Short burst
     else:
-        window_ms = min(150, total_time_ms * 0.3)  # Longer observations
+        window_ms = min(300, total_time_ms * 0.6)  # Longer observations
     
-    zoom_start = max(times_rel[0], peak_time - window_ms * 0.3)  # Put burst closer to left (30% from edge)
-    zoom_end = min(times_rel[-1], peak_time + window_ms * 0.7)  # More space after burst
+    zoom_start = max(times_rel[0], peak_time - window_ms * 0.2)  # Put burst closer to left (20% from edge)
+    zoom_end = min(times_rel[-1], peak_time + window_ms * 0.8)  # More space after burst for scattering tail
 
 zoom_indices = (times_rel >= zoom_start) & (times_rel <= zoom_end)
 
@@ -726,11 +726,68 @@ for width in range(1, max_width_samples + 1):
             best_start = start
             best_sum = pulse_sum
 
-# Use the best-fit boxcar parameters
-pulse_start = best_start
-pulse_end = best_start + best_width
-width_samples = best_width
+# Use the best-fit boxcar parameters for S/N
 peak_snr = best_snr
+
+# Calculate width containing 95% of the fluence (W95)
+# First we need to define the full pulse region over which to calculate fluence
+# We'll use the threshold method to find the broad bounds, then refine for W95
+
+peak_search_idx = np.argmax(time_series_sub)
+threshold_edge = 1.0 * noise_zoom # Use 1-sigma for broad bounds
+required_consecutive = 3
+
+# Search backwards for broad start
+broad_start = 0
+consecutive_below = 0
+for i in range(peak_search_idx, -1, -1):
+    if time_series_sub[i] < threshold_edge and time_series_sub[i] < time_series_sub[peak_search_idx]*0.1:
+        consecutive_below += 1
+    else:
+        consecutive_below = 0
+    
+    if consecutive_below >= required_consecutive:
+        broad_start = i + consecutive_below 
+        break
+
+# Search forwards for broad end
+broad_end = len(time_series_sub)
+consecutive_below = 0
+for i in range(peak_search_idx, len(time_series_sub)):
+    if time_series_sub[i] < threshold_edge and time_series_sub[i] < time_series_sub[peak_search_idx]*0.1:
+        consecutive_below += 1
+    else:
+        consecutive_below = 0
+    
+    if consecutive_below >= required_consecutive:
+        broad_end = i - consecutive_below + 1
+        break
+
+# Extract the pulse profile within broad bounds
+pulse_profile = time_series_sub[broad_start:broad_end]
+# Ensure all values are positive (baseline already subtracted)
+pulse_profile = np.maximum(0, pulse_profile)
+
+if np.sum(pulse_profile) > 0:
+    # Calculate cumulative fluence
+    cumulative_fluence = np.cumsum(pulse_profile)
+    total_fluence = cumulative_fluence[-1]
+    
+    # Find indices for 2.5% and 97.5% (containing 95%)
+    idx_start_95 = np.searchsorted(cumulative_fluence, 0.025 * total_fluence)
+    idx_end_95 = np.searchsorted(cumulative_fluence, 0.975 * total_fluence)
+    
+    # Map back to original indices
+    pulse_start = broad_start + idx_start_95
+    pulse_end = broad_start + idx_end_95
+    
+    print(f"  W95 calculation: Broad bounds {broad_start}-{broad_end}, W95 bounds {pulse_start}-{pulse_end}")
+else:
+    print("  Warning: W95 calculation failed, falling back to boxcar")
+    pulse_start = best_start
+    pulse_end = best_start + best_width
+
+width_samples = pulse_end - pulse_start
 
 # Calculate pulse width in milliseconds
 tsamp_ms = (times_zoom[1] - times_zoom[0])  # Time resolution in ms
@@ -755,7 +812,7 @@ pulse_width_ms = pulse_end_time - pulse_start_time
 
 print(f"  Width region: {pulse_start_time:.3f} to {pulse_end_time:.3f} ms (span: {pulse_width_ms:.3f} ms)")
 
-ax2.axvspan(pulse_start_time, pulse_end_time, alpha=0.2, color='orange', label=f'Width ({pulse_width_ms:.2f} ms)')
+ax2.axvspan(pulse_start_time, pulse_end_time, alpha=0.2, color='blue', label=f'W95 ({pulse_width_ms:.2f} ms)')
 ax2.legend(loc='upper right', fontsize=12)
 
 # Build title from metadata
@@ -767,7 +824,7 @@ if beam_number:
     title_line2_parts.append(f"(Beam {beam_number})")
 title_line2_parts.append(f"DM={dm_incoherent:.2f} pc cm$^{{-3}}$")
 title_line2_parts.append(f"S/N~{peak_snr:.1f}")
-title_line2_parts.append(f"W~{pulse_width_ms:.2f} ms")
+title_line2_parts.append(f"W95~{pulse_width_ms:.2f} ms")
 
 # Combine with newline
 title_str = frb_name + '\n' + ' - '.join(title_line2_parts)
