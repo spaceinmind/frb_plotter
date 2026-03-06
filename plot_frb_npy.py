@@ -18,6 +18,12 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
 from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
+try:
+    from astropy.io import fits as astrofits
+    HAS_ASTROPY = True
+except ImportError:
+    HAS_ASTROPY = False
+
 # Set larger font sizes for better readability
 plt.rcParams.update({
     'font.family': 'serif',
@@ -97,18 +103,65 @@ def downsample_1d(arr, factor):
     return arr_down, n_trim
 
 
+def find_companion_fits(npy_path):
+    """
+    Look for a PSRFITS file accompanying a .npy waterfall.
+    Tries the following candidates in order:
+      1. <same_dir>/<same_stem>.fits
+      2. <same_dir>/<stem_without_trailing_-NNNN>.fits
+    Returns the path of the first match found, or None.
+    """
+    dirpath = os.path.dirname(os.path.abspath(npy_path))
+    stem = os.path.splitext(os.path.basename(npy_path))[0]
+
+    candidates = [os.path.join(dirpath, stem + '.fits')]
+
+    # strip trailing -NNNN (e.g. FRB20201124_0036-0012 -> FRB20201124_0036)
+    import re
+    short_stem = re.sub(r'-\d+$', '', stem)
+    if short_stem != stem:
+        candidates.append(os.path.join(dirpath, short_stem + '.fits'))
+
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def read_fits_metadata(fits_path):
+    """
+    Read frequency range and time resolution from a PSRFITS file.
+    Returns a dict with keys: fmin, fmax, tsamp, nchan_fits
+    or raises an exception if the file cannot be parsed.
+    """
+    with astrofits.open(fits_path, memmap=True) as f:
+        primary = f['PRIMARY'].header
+        subint  = f['SUBINT'].header
+
+        obsfreq  = float(primary['OBSFREQ'])   # MHz, band centre
+        obsbw    = float(primary['OBSBW'])     # MHz, total BW (may be negative for USB)
+        tbin     = float(subint['TBIN'])       # s, time per sample
+        nchan    = int(subint['NCHAN'])        # channels in file
+
+        half_bw = abs(obsbw) / 2.0
+        fmin = obsfreq - half_bw
+        fmax = obsfreq + half_bw
+
+    return dict(fmin=fmin, fmax=fmax, tsamp=tbin, nchan_fits=nchan)
+
+
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Plot FRB dynamic spectrum from .npy file')
 parser.add_argument('filename', type=str,
                     help='Path to the .npy file')
 parser.add_argument('--dm', type=float, required=True,
                     help='Dispersion measure (pc/cm^3)')
-parser.add_argument('--fmin', type=float, default=1000.0,
-                    help='Minimum frequency in MHz (default: 1000)')
-parser.add_argument('--fmax', type=float, default=1500.0,
-                    help='Maximum frequency in MHz (default: 1500)')
-parser.add_argument('--tsamp', type=float, default=1e-4,
-                    help='Time sampling in seconds (default: 1e-4 = 0.1 ms)')
+parser.add_argument('--fmin', type=float, default=None,
+                    help='Minimum frequency in MHz (auto-detected from companion FITS if omitted)')
+parser.add_argument('--fmax', type=float, default=None,
+                    help='Maximum frequency in MHz (auto-detected from companion FITS if omitted)')
+parser.add_argument('--tsamp', type=float, default=None,
+                    help='Time sampling in seconds (auto-detected from companion FITS if omitted)')
 parser.add_argument('--frb-name', type=str, default=None,
                     help='FRB name for plot title (default: derived from filename)')
 parser.add_argument('-f', '--freq-downsample', type=int, default=1,
@@ -141,6 +194,40 @@ if not os.path.exists(filename):
     print(f"Error: File '{filename}' not found!")
     sys.exit(1)
 
+# Auto-detect frequency range and time resolution from companion FITS file
+# if not explicitly supplied on the command line.
+_need_auto = (args.fmin is None) or (args.fmax is None) or (args.tsamp is None)
+if _need_auto:
+    if not HAS_ASTROPY:
+        print("Warning: astropy not available; cannot auto-detect parameters from FITS.")
+        print("         Install astropy or pass --fmin / --fmax / --tsamp explicitly.")
+    else:
+        _fits_path = find_companion_fits(filename)
+        if _fits_path:
+            try:
+                _meta = read_fits_metadata(_fits_path)
+                print(f"\nAuto-detected parameters from: {_fits_path}")
+                if args.fmin is None:
+                    args.fmin = _meta['fmin']
+                    print(f"  fmin  = {args.fmin:.4f} MHz")
+                if args.fmax is None:
+                    args.fmax = _meta['fmax']
+                    print(f"  fmax  = {args.fmax:.4f} MHz")
+                if args.tsamp is None:
+                    args.tsamp = _meta['tsamp']
+                    print(f"  tsamp = {args.tsamp:.8f} s  ({args.tsamp*1e3:.4f} ms)")
+                    if _meta['nchan_fits'] is not None:
+                        print(f"  (FITS has {_meta['nchan_fits']} channels; .npy has been resampled)")
+            except Exception as e:
+                print(f"Warning: Could not read FITS metadata from '{_fits_path}': {e}")
+        else:
+            print(f"\nNo companion FITS file found for '{os.path.basename(filename)}'.")
+
+# Fall back to sensible defaults if still unset
+if args.fmin  is None: args.fmin  = 1000.0;  print("  fmin  defaulting to 1000.0 MHz (use --fmin to override)")
+if args.fmax  is None: args.fmax  = 1500.0;  print("  fmax  defaulting to 1500.0 MHz (use --fmax to override)")
+if args.tsamp is None: args.tsamp = 1e-4;    print("  tsamp defaulting to 1e-4 s / 0.1 ms (use --tsamp to override)")
+
 # Load .npy file
 print(f"\n{'='*70}")
 print(f"NPY File Information: {filename}")
@@ -151,6 +238,10 @@ raw_data = np.load(filename)
 print(f"Data loaded:")
 print(f"  Shape: {raw_data.shape}")
 print(f"  Dtype: {raw_data.dtype}")
+nan_count = np.sum(np.isnan(raw_data))
+if nan_count > 0:
+    print(f"  NaN count: {nan_count} ({100*nan_count/raw_data.size:.1f}% of data) - will replace with 0")
+    raw_data = np.nan_to_num(raw_data, nan=0.0)
 print(f"  Min: {np.min(raw_data):.6e}")
 print(f"  Max: {np.max(raw_data):.6e}")
 print(f"  Mean: {np.mean(raw_data):.6e}")
@@ -269,11 +360,11 @@ if np.sum(rfi_flag_original) > 0:
 print(f"\nData Statistics (post-processing):")
 print("-" * 70)
 print(f"  Shape: {data.shape}")
-print(f"  Min: {np.min(data):.6e}")
-print(f"  Max: {np.max(data):.6e}")
-print(f"  Mean: {np.mean(data):.6e}")
-print(f"  Std: {np.std(data):.6e}")
-print(f"  Median: {np.median(data):.6e}")
+print(f"  Min: {np.nanmin(data):.6e}")
+print(f"  Max: {np.nanmax(data):.6e}")
+print(f"  Mean: {np.nanmean(data):.6e}")
+print(f"  Std: {np.nanstd(data):.6e}")
+print(f"  Median: {np.nanmedian(data):.6e}")
 
 # Extract metadata
 dm = args.dm
