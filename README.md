@@ -156,7 +156,7 @@ python plot_frb_npy.py dynspec.npy --no-dedisperse
 | `--save-png`                  | Save the plot as a PNG file                                             |
 | `--save-fil`                  | Save the processed data as a new `.fil` file                            |
 | `--save-npy`                  | Save the processed data as a new `.npy` file                            |
-| `--save-h5`                  | Save the processed data as a new `.h5` file                            |
+| `--save-h5`                   | Save the processed data as a new `.h5` file                             |
 
 ---
 ## Example plot
