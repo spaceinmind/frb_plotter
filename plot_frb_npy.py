@@ -182,6 +182,8 @@ parser.add_argument('--no-dedisperse', action='store_true',
                     help='Skip dedispersion (data is already dedispersed)')
 parser.add_argument('--save-png', action='store_true',
                     help='Save plot as PNG file (default: do not save)')
+parser.add_argument('--save-npy', action='store_true',
+                    help='Save processed (dedispersed, downsampled, flagged) windowed data as a new .npy file')
 parser.add_argument('--output', '-o', type=str, default=None,
                     help='Output plot filename (overrides --save-png default name)')
 
@@ -607,6 +609,24 @@ ax3 = fig.add_subplot(gs[1, 1], sharey=ax1)  # Frequency spectrum
 # Extract zoomed data
 data_zoom = data_normalized[:, zoom_indices]
 times_zoom = times_rel[zoom_indices]
+
+# Save windowed burst as a new .npy file if requested
+if args.save_npy:
+    base = os.path.splitext(os.path.basename(filename))[0]
+    suffix_parts = [f'DM{args.dm:.4f}']
+    if FREQ_DOWNSAMPLE > 1:
+        suffix_parts.append(f'f{FREQ_DOWNSAMPLE}')
+    if TIME_DOWNSAMPLE > 1:
+        suffix_parts.append(f't{TIME_DOWNSAMPLE}')
+    suffix_parts.append(f'win{args.window_size:.0f}x' if args.symmetric_plot else 'win')
+    suffix = '_' + '_'.join(suffix_parts)
+    out_npy = f"{base}{suffix}.npy"
+    # Save as (time, freq) to match input convention
+    np.save(out_npy, data_clean[:, zoom_indices].T.astype(np.float32))
+    print(f"\nSaved processed NPY to: {out_npy}")
+    print(f"  Shape: {data_clean[:, zoom_indices].T.shape} (time × freq)")
+    print(f"  Freq range: {freqs[0]:.4f} – {freqs[-1]:.4f} MHz")
+    print(f"  tsamp: {args.tsamp*1e6:.2f} µs")
 
 # Plot dynamic spectrum (zoomed)
 data_zoom_nonzero = data_zoom[data_zoom != 0]
