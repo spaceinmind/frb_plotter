@@ -163,6 +163,8 @@ parser.add_argument('--window-size', type=float, default=10.0,
                     help='Time window size as multiple of pulse width (default: 10, meaning ±10× pulse width)')
 parser.add_argument('--save-png', action='store_true',
                     help='Save plot as PNG file (default: do not save)')
+parser.add_argument('--save-h5', action='store_true',
+                    help='Save processed (flagged, downsampled) windowed data as a new .h5 file')
 
 args = parser.parse_args()
 filename = args.filename
@@ -311,6 +313,27 @@ if np.sum(rfi_flag_original) > 0:
         hits = rfi_flag_original & (freqs >= freq_low - 20) & (freqs <= freq_high + 20)
         if np.sum(hits) > 0:
             print(f"  {freq_low}-{freq_high} MHz → coarse channels at {freqs[hits]} MHz")
+
+# Helper: write a CHIME-style HDF5 file from a (nchan, ntime) array.
+def write_h5(outname, data_nchan_ntime, freqs_arr, times_arr, flag_arr, good_freq_arr, metadata_dict):
+    with h5py.File(outname, 'w') as f:
+        f.create_dataset('data', data=data_nchan_ntime.astype(np.float32), compression='gzip')
+        ig = f.create_group('index_map')
+        ig.create_dataset('freqs', data=freqs_arr)
+        ig.create_dataset('times', data=times_arr)
+        if flag_arr is not None:
+            f.create_dataset('flag', data=flag_arr)
+        if good_freq_arr is not None:
+            f.create_dataset('good_freq', data=good_freq_arr)
+        for key, val in metadata_dict.items():
+            try:
+                f.attrs[key] = val
+            except Exception:
+                pass
+    print(f"Saved processed HDF5 to: {outname}")
+    print(f"  Shape: {data_nchan_ntime.shape[0]} chans × {data_nchan_ntime.shape[1]} samples")
+    print(f"  Freq range: {freqs_arr[0]:.4f} – {freqs_arr[-1]:.4f} MHz")
+    print(f"  Time range: {times_arr[0]:.6f} – {times_arr[-1]:.6f} s")
 
 print(f"\nData Statistics:")
 print("-" * 70)
@@ -641,6 +664,23 @@ ax3 = fig.add_subplot(gs[1, 1], sharey=ax1)  # Frequency spectrum
 # Extract zoomed data
 data_zoom = data_normalized[:, zoom_indices]
 times_zoom = times_rel[zoom_indices]
+
+# Save windowed burst as a new HDF5 file if requested
+if args.save_h5:
+    base = os.path.splitext(os.path.basename(filename))[0]
+    suffix_parts = []
+    if dm_incoherent:
+        suffix_parts.append(f'DM{dm_incoherent:.4f}')
+    if FREQ_DOWNSAMPLE > 1:
+        suffix_parts.append(f'f{FREQ_DOWNSAMPLE}')
+    if TIME_DOWNSAMPLE > 1:
+        suffix_parts.append(f't{TIME_DOWNSAMPLE}')
+    suffix_parts.append(f'win{args.window_size:.0f}x' if args.symmetric_plot else 'win')
+    suffix = ('_' + '_'.join(suffix_parts)) if suffix_parts else '_windowed'
+    out_h5 = f"{base}{suffix}.h5"
+    zoom_flag = flag[:, zoom_indices] if flag is not None else None
+    zoom_times = times[zoom_indices]
+    write_h5(out_h5, data_clean[:, zoom_indices], freqs, zoom_times, zoom_flag, good_freq, metadata)
 
 # Plot dynamic spectrum (zoomed)
 # Use percentiles for better scaling, but symmetric around 0 for SNR data
