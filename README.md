@@ -142,16 +142,21 @@ python plot_frb_npy.py dynspec.npy --no-dedisperse
 
 ### Common Options
 
-| Option                      | Description                               |
-| --------------------------- | ----------------------------------------- |
-| `--dm`                      | Dispersion measure (pc cm⁻³)              |
-| `--no-dedisperse`           | Skip dedispersion                         |
-| `--cut N`                   | Auto-center on peak and extract ±N ms     |
-| `-f`                        | Frequency downsampling factor             |
-| `-t`                        | Time downsampling factor                  |
-| `--flag-freq "f1-f2,f3-f4"` | Manually mask frequency ranges (MHz)      |
-| `-s`                        | Use symmetric time axis centered on burst |
-| `--save-png`                | Save figure to disk                       |
+| Option                        | Description                                                             |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `-h`, `--help`                | Show help message and exit                                              |
+| `-f N`, `--freq-downsample N` | Frequency downsampling factor                                           |
+| `-t N`, `--time-downsample N` | Time downsampling factor                                                |
+| `--cut N`                     | Auto-find the pulse and extract a window of `±N` ms around it           |
+| `--dm DM`                     | Dispersion measure for dedispersion in pc cm⁻³                          |
+| `--no-dedisperse`             | Skip dedispersion even if a DM is available                             |
+| `--flag-freq "f1-f2,f3-f4"`   | Manually mask one or more frequency ranges in MHz                       |
+| `-s`, `--sym`                 | Use a symmetric time axis centered on the pulse (`t=0` at pulse center) |
+| `--window-size N`             | Set time window size as a multiple of pulse width; default is `10`      |
+| `--save-png`                  | Save the plot as a PNG file                                             |
+| `--save-fil`                  | Save the processed data as a new `.fil` file                            |
+| `--save-npy`                  | Save the processed data as a new `.npy` file                            |
+| `--save-h5`                  | Save the processed data as a new `.h5` file                            |
 
 ---
 ## Example plot
