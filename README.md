@@ -159,4 +159,4 @@ python plot_frb_npy.py dynspec.npy --no-dedisperse
 ```bash
 python plot_fil.py 20220114_B33_cDD_DM87.7527_F2048_b32_d1.fil --flag-freq 1550-1559 --dm 87.75 --sym --window-size 10 -f 32
 ```
-<img src="exampleplot.png" alt="Batch 1" width="1000">
+
