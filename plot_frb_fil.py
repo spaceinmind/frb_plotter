@@ -109,7 +109,21 @@ def read_frb_fil(filename, start_time=None, duration=None, dm=None):
         Dictionary containing file header information
     """
     fil = FilReader(filename)
-    
+
+    # Check for empty file (header only, no data samples)
+    actual_nsamples = fil.header.nsamples
+    if actual_nsamples == 0:
+        import os
+        fsize = os.path.getsize(filename)
+        hdr_size = fil.header.hdrlens[0] if fil.header.hdrlens else 0
+        sampsize = fil.header.nchans * fil.header.nbits // 8
+        actual_nsamples = (fsize - hdr_size) // sampsize if sampsize > 0 else 0
+        if actual_nsamples == 0:
+            raise ValueError(
+                f"File '{filename}' contains no data samples (file size: {fsize} bytes, "
+                f"header size: {hdr_size} bytes). The file may be truncated or empty."
+            )
+
     # Get frequency array (in MHz)
     freqs = fil.header.fch1 + np.arange(fil.header.nchans) * fil.header.foff
     
@@ -192,6 +206,8 @@ parser.add_argument('--window-size', type=float, default=10.0,
                     help='Time window size as multiple of pulse width (default: 10, meaning ±10× pulse width)')
 parser.add_argument('--save-png', action='store_true',
                     help='Save plot as PNG file (default: do not save)')
+parser.add_argument('--save-fil', action='store_true',
+                    help='Save processed (dedispersed, downsampled, flagged) data as a new .fil file')
 
 args = parser.parse_args()
 filename = args.filename
@@ -204,7 +220,11 @@ if not os.path.exists(filename):
 
 # First, read the file to get metadata (including header DM)
 print(f"Reading filterbank file: {filename}")
-data, freqs, times, metadata, fil = read_frb_fil(filename, start_time=None, duration=None, dm=None)
+try:
+    data, freqs, times, metadata, fil = read_frb_fil(filename, start_time=None, duration=None, dm=None)
+except ValueError as e:
+    print(f"Error: {e}")
+    sys.exit(1)
 
 # Print file information
 print_fil_info(fil)
@@ -347,6 +367,46 @@ if np.sum(rfi_flag_original) > 0:
         hits = rfi_flag_original & (freqs >= freq_low - 20) & (freqs <= freq_high + 20)
         if np.sum(hits) > 0:
             print(f"  {freq_low}-{freq_high} MHz → coarse channels at {freqs[hits]} MHz")
+
+# Helper: write a sigproc filterbank file from a (nchan, ntime) float32 array.
+def write_filterbank(outname, data_nchan_ntime, header_fil, new_tsamp, new_fch1, new_foff,
+                    tstart_override=None):
+    import struct
+
+    def _pack_string(key):
+        return struct.pack('I', len(key)) + key.encode()
+
+    def _pack_int(key, val):
+        return _pack_string(key) + struct.pack('i', int(val))
+
+    def _pack_double(key, val):
+        return _pack_string(key) + struct.pack('d', float(val))
+
+    src = str(getattr(header_fil.header, 'source', 'Unknown'))
+    tstart = tstart_override if tstart_override is not None else getattr(header_fil.header, 'tstart', 0.0)
+    hdr = _pack_string('HEADER_START')
+    hdr += _pack_int('telescope_id', getattr(header_fil.header, 'telescope_id', 0))
+    hdr += _pack_int('machine_id',   getattr(header_fil.header, 'machine_id',   0))
+    hdr += _pack_int('data_type',    1)
+    hdr += struct.pack('I', len('source_name')) + b'source_name'
+    hdr += struct.pack('I', len(src)) + src.encode()
+    hdr += _pack_double('tstart',  tstart)
+    hdr += _pack_double('tsamp',   new_tsamp)
+    hdr += _pack_int('nbits',      32)
+    hdr += _pack_int('nchans',     data_nchan_ntime.shape[0])
+    hdr += _pack_int('nifs',       1)
+    hdr += _pack_double('fch1',    new_fch1)
+    hdr += _pack_double('foff',    new_foff)
+    hdr += _pack_string('HEADER_END')
+
+    arr = data_nchan_ntime.astype(np.float32)
+    # Data layout: (ntime, nchans) row-major
+    with open(outname, 'wb') as f:
+        f.write(hdr)
+        f.write(arr.T.tobytes())  # transpose to (ntime, nchan)
+    print(f"Saved processed filterbank to: {outname}")
+    print(f"  Shape: {arr.shape[0]} chans × {arr.shape[1]} samples, nbits=32 (float32)")
+    print(f"  fch1={new_fch1:.4f} MHz, foff={new_foff:.6f} MHz, tsamp={new_tsamp*1e6:.2f} µs")
 
 print(f"\nData Statistics:")
 print("-" * 70)
@@ -608,6 +668,31 @@ ax3 = fig.add_subplot(gs[1, 1], sharey=ax1)  # Frequency spectrum
 # Extract zoomed data
 data_zoom = data_normalized[:, zoom_indices]
 times_zoom = times_rel[zoom_indices]
+
+# Save windowed burst as a new filterbank if requested
+if args.save_fil:
+    zoom_sample_indices = np.where(zoom_indices)[0]
+    base = os.path.splitext(os.path.basename(filename))[0]
+    suffix_parts = []
+    if dm_value:
+        suffix_parts.append(f'DM{dm_value:.4f}')
+    if FREQ_DOWNSAMPLE > 1:
+        suffix_parts.append(f'f{FREQ_DOWNSAMPLE}')
+    if TIME_DOWNSAMPLE > 1:
+        suffix_parts.append(f't{TIME_DOWNSAMPLE}')
+    if args.symmetric_plot:
+        suffix_parts.append(f'win{args.window_size:.0f}x')
+    else:
+        suffix_parts.append('win')
+    suffix = ('_' + '_'.join(suffix_parts)) if suffix_parts else '_windowed'
+    out_fil = f"{base}{suffix}.fil"
+    new_tsamp = metadata['tsamp'] * TIME_DOWNSAMPLE
+    new_fch1  = float(freqs[0])             # freqs[0] is the top channel
+    new_foff  = float(freqs[1] - freqs[0])  # signed channel step
+    # Update tstart to reflect the start of the saved window (times is always absolute from file start)
+    tstart_window = metadata['tstart'] + times[zoom_sample_indices[0]] / 86400.0
+    write_filterbank(out_fil, data_clean[:, zoom_indices], fil, new_tsamp, new_fch1, new_foff,
+                     tstart_override=tstart_window)
 
 # Plot dynamic spectrum (zoomed)
 # Use percentiles for better scaling, but symmetric around 0 for SNR data
