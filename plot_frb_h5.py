@@ -165,6 +165,8 @@ parser.add_argument('--save-png', action='store_true',
                     help='Save plot as PNG file (default: do not save)')
 parser.add_argument('--save-h5', action='store_true',
                     help='Save processed (flagged, downsampled) windowed data as a new .h5 file')
+parser.add_argument('--no-flag', action='store_true',
+                    help='Do not use header good_freq flags for RFI masking; use computed/manual flags only')
 
 args = parser.parse_args()
 filename = args.filename
@@ -486,8 +488,8 @@ if off_pulse_end < 10:
 print(f"\nRFI Flagging:")
 print(f"  Using off-pulse region: {off_pulse_start} - {off_pulse_end} samples")
 
-# Use RFI flags from header (good_freq)
-if good_freq is not None:
+# Use RFI flags from header (good_freq) unless disabled
+if good_freq is not None and not args.no_flag:
     rfi_flag = ~good_freq  # Invert: good_freq=True means good, rfi_flag=True means bad
     n_rfi = np.sum(rfi_flag)
     print(f"  From file header: Flagged {n_rfi}/{len(freqs)} channels ({100*n_rfi/len(freqs):.1f}%)")
@@ -515,7 +517,10 @@ if good_freq is not None:
         data_clean[rfi_flag, :] = 0
 else:
     # Fallback: calculate RFI flags if not in header
-    print(f"  No RFI flags in header, calculating...")
+    if good_freq is not None and args.no_flag:
+        print(f"  Header RFI flags present but disabled via --no-flag; calculating instead...")
+    else:
+        print(f"  No RFI flags in header, calculating...")
     off_pulse_region = data_clean[:, off_pulse_start:off_pulse_end]
     
     # Calculate statistics per channel in off-pulse region
