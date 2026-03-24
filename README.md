@@ -2,13 +2,14 @@
 ---
 ## Overview
 
-This repository contains three standalone plotting scripts:
+This repository contains four standalone plotting scripts:
 
-| Format                      | Script            |
-| --------------------------- | ----------------- |
-| HDF5 (`.h5`)                | `plot_frb_h5.py`  |
-| SIGPROC filterbank (`.fil`) | `plot_frb_fil.py` |
-| NumPy array (`.npy`)        | `plot_frb_npy.py` |
+| Format                      | Script             |
+| --------------------------- | ------------------ |
+| HDF5 (`.h5`)                | `plot_frb_h5.py`   |
+| SIGPROC filterbank (`.fil`) | `plot_frb_fil.py`  |
+| PSRFITS (`.fits`)           | `plot_frb_fits.py` |
+| NumPy array (`.npy`)        | `plot_frb_npy.py`  |
 
 All scripts support:
 
@@ -22,6 +23,7 @@ All scripts support:
 ## Files
 - plot_frb_h5.py
 - plot_frb_fil.py
+- plot_frb_fits.py
 - plot_frb_npy.py
 - LICENSE
 - requirements.txt
@@ -98,7 +100,55 @@ python plot_frb_fil.py observation.fil --no-dedisperse
 
 ---
 
-### (3) Plotting `.npy` Files
+### (3) Plotting `.fits` Files (PSRFITS)
+
+Reads standard PSRFITS dynamic spectrum files using `astropy`.
+Supports DATA cubes of arbitrary shape (e.g. `(nsub, nchan, npol, nbin, 1)`) and
+handles truncated files gracefully by reading only the sub-integrations that are
+present on disk.
+
+If a DM is stored in the SUBINT header it will be used automatically.
+You can override with `--dm`, or disable dedispersion using `--no-dedisperse`.
+
+Processed data can be saved as a simplified PSRFITS file with `--save-fits`.
+
+#### Basic usage
+
+```bash
+python plot_frb_fits.py burst.fits
+```
+
+#### Example with explicit DM and flagging
+
+```bash
+python plot_frb_fits.py burst.fits \
+  --dm 565.2 \
+  --cut 50 \
+  -f 4 -t 2 \
+  --flag-freq "1160-1178,1278-1296" \
+  -s \
+  --window-size 10 \
+  --save-png
+```
+
+#### Save processed output
+
+```bash
+python plot_frb_fits.py burst.fits \
+  --dm 565.2 \
+  -f 4 -t 2 \
+  --save-fits
+```
+
+#### Disable dedispersion
+
+```bash
+python plot_frb_fits.py burst.fits --no-dedisperse
+```
+
+---
+
+### (4) Plotting `.npy` Files
 
 Assumes array shape:
 
@@ -154,9 +204,10 @@ python plot_frb_npy.py dynspec.npy --no-dedisperse
 | `-s`, `--sym`                 | Use a symmetric time axis centered on the pulse (`t=0` at pulse center) |
 | `--window-size N`             | Set time window size as a multiple of pulse width; default is `10`      |
 | `--save-png`                  | Save the plot as a PNG file                                             |
-| `--save-fil`                  | Save the processed data as a new `.fil` file                            |
-| `--save-npy`                  | Save the processed data as a new `.npy` file                            |
-| `--save-h5`                   | Save the processed data as a new `.h5` file                             |
+| `--save-fil`                  | Save the processed data as a new `.fil` file (`.fil` script only)       |
+| `--save-fits`                 | Save the processed data as a new `.fits` file (`.fits` script only)     |
+| `--save-npy`                  | Save the processed data as a new `.npy` file (`.npy` script only)       |
+| `--save-h5`                   | Save the processed data as a new `.h5` file (`.h5` script only)         |
 
 ---
 ## Example plot
